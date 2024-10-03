@@ -29,7 +29,7 @@ jobs:
         run: |
           for dir in $(find . -type d -name '*terraform*'); do
             cd "$dir"
-            terraform init
+            terraform init   # This will use the remote backend with Azure AD authentication
             terraform destroy -auto-approve
             cd -   # return to the root repository directory
           done
