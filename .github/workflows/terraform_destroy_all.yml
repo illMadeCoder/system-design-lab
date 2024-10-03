@@ -31,7 +31,7 @@ jobs:
             echo "Processing directory: $dir"
             cd "$dir"
             terraform init   # Initialize Terraform
-            terraform destroy -auto-approve  # Destroy resources
+            terraform destroy -auto-approve  -lock=false # Destroy resources
             cd -   # Return to the root directory
           done
         env:
