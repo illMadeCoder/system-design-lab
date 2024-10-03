@@ -1,0 +1,35 @@
+name: Auto Destroy
+
+on:
+  workflow_dispatch:   # Allows manual triggering
+  schedule:
+    - cron: '0 4 * * *' # Runs at 4 AM UTC daily
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Authenticate to Azure
+        run: |
+          az login --service-principal \
+            -u ${{ secrets.ARM_CLIENT_ID }} \
+            -p ${{ secrets.ARM_CLIENT_SECRET }} \
+            --tenant ${{ secrets.ARM_TENANT_ID }}
+
+      - name: Set Azure Subscription
+        run: az account set --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      - name: Find and Destroy Terraform Projects
+        run: |
+          for dir in $(find . -name 'main.tf' -exec dirname {} \; | sort -u); do
+            cd "$dir"
+            terraform init   # This will use the remote backend with Azure AD authentication
+            terraform destroy -auto-approve
+            cd -   # return to the root repository directory
+          done
