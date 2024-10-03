@@ -25,9 +25,14 @@ jobs:
       - name: Set Azure Subscription
         run: az account set --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }}
 
+      - name: Debug - List Directories Containing main.tf
+        run: |
+          find . -name 'main.tf' -exec dirname {} \; | sort -u
+
       - name: Find and Destroy Terraform Projects
         run: |
           for dir in $(find . -name 'main.tf' -exec dirname {} \; | sort -u); do
+            echo "Processing directory: $dir"
             cd "$dir"
             terraform init   # This will use the remote backend with Azure AD authentication
             terraform destroy -auto-approve
