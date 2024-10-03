@@ -27,7 +27,7 @@ jobs:
 
       - name: Find and Destroy Terraform Projects
         run: |
-          for dir in $(find . -type d -name '*terraform*'); do
+          for dir in $(find . -name 'main.tf' -exec dirname {} \; | sort -u); do
             cd "$dir"
             terraform init   # This will use the remote backend with Azure AD authentication
             terraform destroy -auto-approve
