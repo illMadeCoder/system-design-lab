@@ -3,6 +3,6 @@ terraform {
     resource_group_name   = "terraform"
     storage_account_name  = "terraformbackendjesseb"
     container_name        = "tfstate"
-    key                   = "terraform.tfstate"  # State file path in the container
+    key                   = "1_single_server_setup.tfstate"
   }
 }
