@@ -3,7 +3,7 @@ name: Auto Destroy
 on:
   workflow_dispatch:   # Allows manual triggering
   schedule:
-    - cron: '0 4 * * *' # Runs at 4 AM UTC daily
+    - cron: '0 8 * * *' # Runs at 4 AM UTC daily
 
 jobs:
   destroy:
@@ -28,8 +28,14 @@ jobs:
       - name: Find and Destroy Terraform Projects
         run: |
           for dir in $(find . -name 'main.tf' -exec dirname {} \; | sort -u); do
+            echo "Processing directory: $dir"
             cd "$dir"
-            terraform init   # This will use the remote backend with Azure AD authentication
-            terraform destroy -auto-approve
-            cd -   # return to the root repository directory
+            terraform init   # Initialize Terraform
+            terraform destroy -auto-approve  -lock=false # Destroy resources
+            cd -   # Return to the root directory
           done
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
