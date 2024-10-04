@@ -94,6 +94,75 @@ resource "azurerm_network_security_group" "this" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
+
+  # Allow SSH traffic only from the VPN address space (172.16.0.0/24)
+  security_rule {
+    name                       = "Allow-SSH-VPN"
+    priority                   = 1004
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "172.16.0.0/24" # VPN client IP range
+    destination_address_prefix = "*"
+  }
+
+  # Deny SSH traffic from public
+  security_rule {
+    name                       = "Deny-SSH-Public"
+    priority                   = 1005
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+# Subnet for VPN Gateway
+resource "azurerm_subnet" "this" {
+  name                 = "GatewaySubnet"
+  resource_group_name  = azurerm_resource_group.this.name
+  virtual_network_name = azurerm_virtual_network.this.name
+  address_prefixes     = ["10.0.3.0/24"]
+}
+
+# Public IP for the VPN Gateway
+resource "azurerm_public_ip" "vpn_pip" {
+  name                = "vpn-gateway-pip"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  allocation_method   = "Dynamic"
+}
+
+# VPN Gateway
+resource "azurerm_virtual_network_gateway" "vpn_gateway" {
+  name                = "vpn-gateway"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+
+  type     = "Vpn"
+  vpn_type = "RouteBased"
+  sku      = "VpnGw1"
+
+  ip_configuration {
+    name                          = "vpngatewayconfig"
+    public_ip_address_id          = azurerm_public_ip.vpn_pip.id
+    private_ip_address_allocation = "Dynamic"
+    subnet_id                     = azurerm_subnet.this.id
+  }
+
+  vpn_client_configuration {
+    address_space = ["172.16.0.0/24"]
+
+    root_certificate {
+      name = "vpn-cert"
+      public_cert_data = filebase64("path_to_your_root_certificate.pem")
+    }
+  }
 }
 
 resource "azurerm_virtual_machine" "this" {
@@ -148,8 +217,16 @@ terraform {
 }
 
 provider "cloudflare" {
-  api_token = "MqIudZV6judLHyTdl07iZVKFl96yyUcZol6TtT8F" # Cloudflare API token
+  api_token = var.cloudflare_api_token
 }
+
+# Define a variable for the Cloudflare API token
+variable "cloudflare_api_token" {
+  description = "The API token for Cloudflare"
+  type        = string
+  sensitive   = true
+}
+
 
 # Retrieve Cloudflare zone (your domain)
 data "cloudflare_zones" "this" {
