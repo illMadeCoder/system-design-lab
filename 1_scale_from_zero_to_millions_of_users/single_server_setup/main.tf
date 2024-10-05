@@ -95,73 +95,17 @@ resource "azurerm_network_security_group" "this" {
     destination_address_prefix = "*"
   }
 
-  # Allow SSH traffic only from the VPN address space (172.16.0.0/24)
+  # Deny SSH traffic from public
   security_rule {
-    name                       = "Allow-SSH-VPN"
-    priority                   = 1004
+    name                       = "Allow-SSH-Public"
+    priority                   = 1005
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "22"
-    source_address_prefix      = "172.16.0.0/24" # VPN client IP range
-    destination_address_prefix = "*"
-  }
-
-  # Deny SSH traffic from public
-  security_rule {
-    name                       = "Deny-SSH-Public"
-    priority                   = 1005
-    direction                  = "Inbound"
-    access                     = "Deny"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
-  }
-}
-
-# Subnet for VPN Gateway
-resource "azurerm_subnet" "this" {
-  name                 = "GatewaySubnet"
-  resource_group_name  = azurerm_resource_group.this.name
-  virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["10.0.3.0/24"]
-}
-
-# Public IP for the VPN Gateway
-resource "azurerm_public_ip" "vpn_pip" {
-  name                = "vpn-gateway-pip"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  allocation_method   = "Dynamic"
-}
-
-# VPN Gateway
-resource "azurerm_virtual_network_gateway" "vpn_gateway" {
-  name                = "vpn-gateway"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-
-  type     = "Vpn"
-  vpn_type = "RouteBased"
-  sku      = "VpnGw1"
-
-  ip_configuration {
-    name                          = "vpngatewayconfig"
-    public_ip_address_id          = azurerm_public_ip.vpn_pip.id
-    private_ip_address_allocation = "Dynamic"
-    subnet_id                     = azurerm_subnet.this.id
-  }
-
-  vpn_client_configuration {
-    address_space = ["172.16.0.0/24"]
-
-    root_certificate {
-      name = "vpn-cert"
-      public_cert_data = filebase64("path_to_your_root_certificate.pem")
-    }
   }
 }
 
@@ -193,7 +137,16 @@ resource "azurerm_virtual_machine" "this" {
   os_profile {
     computer_name  = "hostname"
     admin_username = "testadmin"
-    admin_password = "Password1234!"
+    custom_data = <<-EOF
+      #cloud-config
+      package_update: true
+      packages:
+        - nginx
+      runcmd:
+        - systemctl start nginx
+        - systemctl enable nginx
+    EOF
+
   }
   os_profile_linux_config {
     disable_password_authentication = true
@@ -202,6 +155,32 @@ resource "azurerm_virtual_machine" "this" {
       key_data = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDYD68lW91VgYmP6nt5kdPgtKWLDwY4FBVuDInpXXtjR0MyECJsU3wKOk0R3YVgN+0541qFNguUqBkY0Frl9eldZtYX48g0TH3omSwL7dCG0/AW/sDTAhErjwd42HQQc22xfWL0OGbbRcTIfPR6d4Kt5zps4vCaNaO0f1iLxLKEzE0YLCcOA7IIlchrRFSQRN0uap9DhiakTo1i5KMk9bBDAIWnSkhsZooAMg/dr2Lc4TOjXori/CKvB9z8Q4AEWPkdHX6ZSBJT47+NYXiU7oJt2UgIAE8kxdQGsMAErqfSkpjWDGlGad2EhTU+sb9O7+KMh3Nq24hKvj/qi7CKzNxVIyMDq0x6FqFhKYy3/1aIW+YL3Xt8eFPwZ9HAVAcnNqnFXQfB0D53+G7EIf8R6wXTrHSOtRrSmr64wPWwBkdT3mkBZ4Wlcad72x1kX8WWr84d/XwuoiS4fVBhc4E6E00EYlPJp94HKOj7ak3HVFNOQYo3CJ7/z/SMHKnpPkfOjMz0aJbsCxElj1PTA+gvlHttfZxrdc9kBg5uyBeyHAUCa7zeC2ke8YFU9x98rjCzMPwZSf2aFOQFJITFk7gVbKOA6L37DYffb+fvmB7w+EwpH5RMn81WKAAe7bqQXzGjcLff3m/v07Z1ir/UE+aPL+owPjGKYXYCWYxk7pls1vUzTw=="
     }
   }
+  tags = {
+    environment = "staging"
+  }
+}
+
+resource "azurerm_mssql_server" "this" {
+  name                         = "tfvmex-mssql"
+  location                     = azurerm_resource_group.this.location
+  resource_group_name          = azurerm_resource_group.this.name
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = "P@ssw0rd123"
+
+  tags = {
+    environment = "staging"
+  }
+}
+
+resource "azurerm_mssql_database" "this" {
+  name                = "tfvmexdb"
+  server_id           = azurerm_mssql_server.this.id
+  sku_name            = "GP_Gen5_2"
+  max_size_gb         = 5
+  collation           = "SQL_Latin1_General_CP1_CI_AS"
+  auto_pause_delay_in_minutes = 60
+  min_capacity        = 0.5
   tags = {
     environment = "staging"
   }
@@ -242,7 +221,7 @@ resource "cloudflare_record" "a_record" {
 
   name    = "illmadecoder.org"                # The root domain
   type    = "A"                               # A record to map domain to IP
-  value   = azurerm_public_ip.this.ip_address # Static public IP from Azure
+  content = azurerm_public_ip.this.ip_address # Static public IP from Azure
   ttl     = 3600                              # Time-to-live, 1 hour
   proxied = false                             # Set to false if you don't want Cloudflare's CDN/proxy features
 }
